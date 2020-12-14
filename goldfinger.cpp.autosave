@@ -1,0 +1,515 @@
+#include "goldfinger.h"
+#include "ui_goldfinger.h"
+#include <QFileInfo>
+#include <QDir>
+#include <QFile>
+
+Goldfinger::Goldfinger(QWidget *parent) :
+    QDialog(parent),
+    ui(new Ui::Goldfinger)
+{
+    ui->setupUi(this);
+
+
+
+
+
+    ui->dockWidget->setVisible(false);
+    //列换自动调整
+    ui->treeWidget->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    /*用户管理*/
+
+    //操作
+    QStringList listope;
+    listope<<"添加卡"<<"销毁卡"<<"修改余额";
+    ui->ope->addItems(listope);
+    ui->ope->setCurrentIndex(-1);
+
+    //操作
+    QStringList listPope;
+    listPope<<"添加电宝"<<"下架电宝"<<"改变状态"<<"改变电量";
+    ui->Pope->addItems(listPope);
+    ui->Pope->setCurrentIndex(-1);
+
+
+
+    //货架信息初始化
+    itemA = new QTreeWidgetItem(ui->treeWidget,QStringList(QString("货架A")));
+
+
+    itemB = new QTreeWidgetItem(ui->treeWidget,QStringList(QString("货架B")));
+
+    /*selworktip字体颜色*/
+    QPalette pa;
+    pa.setColor(QPalette::WindowText,Qt::red);
+    ui->selcaridtip->setPalette(pa);
+    //selcaridtip字体颜色
+    ui->selworktip->setPalette(pa);
+    ui->label_2->setPalette(pa);
+    ui->label_5->setPalette(pa);
+
+}
+
+void Goldfinger::setmanagercarid(QString carid)
+{
+    managercarid = carid;
+    ui->managercarid->setText(managercarid);
+}
+
+Goldfinger::~Goldfinger()
+{
+    delete ui;
+}
+/*返回用户界面*/
+void Goldfinger::on_pushButton_3_clicked()
+{
+
+
+//    CA->quit();
+//    delete  CA;
+//    delete  itemA;
+//    delete  itemB;
+//    delete  this;
+
+    this->close();
+
+    this->parentWidget()->show();
+//    delete ui;
+
+
+}
+/*用户卡信息列表刷新*/
+void Goldfinger::flushuserlist()
+{
+
+    int count = ui->listWidget->count();
+    for (int i = 0 ; i< count;i++) {
+
+        QListWidgetItem *ritem= ui->listWidget->takeItem(0);
+        delete ritem;
+    }
+    QSqlQuery myquery(*mybase);
+    myquery.exec(QString("select * from acctable;"));
+
+    while(myquery.next())
+    {
+
+        QString usecarid = myquery.value("carid").toString();
+        float usebal = myquery.value("bal").toString().toFloat();
+        QString userinuse = myquery.value("inuse").toString();
+        QString info = QString("卡号：%1 余额：%2元 正在使用电宝：%3")
+                .arg(usecarid)
+                .arg(usebal)
+                .arg(userinuse);
+        QListWidgetItem * item = new QListWidgetItem(info);
+        item->setToolTip(QString("%1@%2").arg(usecarid).arg(usebal));
+        ui->listWidget->addItem(item);
+    }
+
+
+    return;
+}
+/*货架信息列表刷新*/
+void Goldfinger::flushstrogalist()
+{
+    int i = 0;
+    QStringList strogelist;
+    int count = itemA->childCount();
+    //删除货架A的子项
+    for (i = 0; i<count;i++)
+    {
+        itemA->removeChild(itemA->child(0));
+    }
+    count = itemB->childCount();
+    for (i = 0; i<count;i++)
+    {
+        itemB->removeChild(itemB->child(0));
+    }
+
+    QSqlQuery myqueryA(*mybase);
+    myqueryA.exec(QString("select * from tableA;"));
+
+
+    while(myqueryA.next())
+    {
+        QStringList list;
+        list<<QString("序列号：%1")
+              .arg(myqueryA.value("series").toString());
+        QTreeWidgetItem *items = new QTreeWidgetItem(itemA,list);
+        list.clear();
+        list<<QString("状态：%1 电量：%2%")
+               .arg(myqueryA.value("status").toString())
+               .arg(myqueryA.value("electric").toString().toFloat());
+        QTreeWidgetItem *itemss = new QTreeWidgetItem(items,list);
+        list.clear();
+
+        strogelist<<QString("A货架 %1 %2 %3")
+                    .arg(myqueryA.value("series").toString())
+                    .arg(myqueryA.value("status").toString())
+                         .arg(myqueryA.value("electric").toString());
+
+    }
+
+
+    QSqlQuery myqueryB(*mybase);
+    myqueryB.exec(QString("select * from tableB;"));
+
+    while(myqueryB.next())
+    {
+        QStringList list;
+        list<<QString("序列号：%1")
+              .arg(myqueryB.value("series").toString());
+        QTreeWidgetItem *items = new QTreeWidgetItem(itemB,list);
+        list.clear();
+        list<<QString("状态：%1 电量：%2%")
+               .arg(myqueryB.value("status").toString())
+               .arg(myqueryB.value("electric").toString().toFloat());
+        QTreeWidgetItem *itemss = new QTreeWidgetItem(items,list);
+        list.clear();
+        strogelist<<QString("B货架 %1 %2 %3").arg(myqueryB.value("series").toString())
+                                          .arg(myqueryB.value("status").toString())
+                                          .arg(myqueryB.value("electric").toString());
+    }
+
+    ui->storage->clear();
+    ui->storage->addItems(strogelist);
+    ui->storage->setCurrentIndex(-1);
+
+    return;
+}
+
+
+void Goldfinger::getmybase(QSqlDatabase * base)
+{
+    this->mybase = base;
+}
+
+void Goldfinger::on_listWidget_currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous)
+{
+    Q_UNUSED(previous);
+    if(current == NULL)
+    {
+        return;
+    }
+    //获取卡号
+    QStringList list = current->toolTip().split("@");
+    //显示被选择的卡号
+    ui->selcarid->setText(list.at(0));
+    //标记余额
+    ui->selcarid->setToolTip(list.at(1));
+
+}
+/*用户管理  --》输入内容确认按钮*/
+void Goldfinger::on_pushButton_4_clicked()
+{
+    ui->selcaridtip->clear();
+    ui->selworktip->clear();
+    int flag = 0;
+    if(ui->selcarid->text().size() == 0 && ui->ope->currentText() != "添加卡")
+    {
+        flag++;
+        ui->selcaridtip->setText("卡号X");
+    }
+    if(ui->ope->currentText().size() == 0)
+    {
+        flag++;
+        ui->selworktip->setText("操作X");
+    }
+    if(ui->userinput_3->text().size() ==  0 && ui->ope->currentText() != "销毁卡")
+    {
+        flag++;
+    }
+    if(flag)
+    {
+        return;
+    }
+
+
+    //根据请求改变acc表内的内容
+    if(ui->ope->currentText() == "添加卡")
+    {
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("insert into acctable values(\"%1\",100.0,\"无\");")
+                            .arg(ui->userinput_3->text())))
+        {
+
+                //清空
+                ui->selcarid->clear();
+                ui->ope->setCurrentIndex(-1);
+                ui->userinput_3->clear();
+                return;
+        }
+
+        ui->selcarid->clear();
+        ui->ope->setCurrentIndex(-1);
+        ui->userinput_3->clear();
+
+    }else if (ui->ope->currentText() == "销毁卡")
+    {
+
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("delete from acctable where carid=\"%1\";")
+                            .arg(ui->selcarid->text())))
+        {
+
+                //清空
+                ui->selcarid->clear();
+                ui->ope->setCurrentIndex(-1);
+                ui->userinput_3->clear();
+                return;
+        }
+
+        ui->selcarid->clear();
+        ui->ope->setCurrentIndex(-1);
+        ui->userinput_3->clear();
+
+    }else if (ui->ope->currentText() == "修改余额")
+    {
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("update acctable set bal=%1 where carid=\"%2\" and bal=%3;")
+                            .arg(ui->userinput_3->text())
+                            .arg(ui->selcarid->text())
+                            .arg(ui->selcarid->toolTip())
+                                        ))
+        {
+
+                //清空
+                ui->selcarid->clear();
+                ui->ope->setCurrentIndex(-1);
+                ui->userinput_3->clear();
+                return;
+        }
+
+        ui->selcarid->clear();
+        ui->ope->setCurrentIndex(-1);
+        ui->userinput_3->clear();
+
+    }
+    //管理员界面用户卡信息列表刷新
+    flushuserlist();
+    return;
+}
+/*货架管理  --》输入内容确认按钮*/
+void Goldfinger::on_pushButton_clicked()
+{
+    ui->label_5->clear();
+    ui->label_2->clear();
+    int flag = 0;
+    if(ui->storage->currentText().size() == 0 &&ui->Pope->currentText() != "添加电宝")
+    {
+        flag++;
+        ui->label_5->setText("电宝X");
+    }
+    if(ui->Pope->currentText().size() == 0)
+    {
+        flag++;
+        ui->label_2->setText("操作X");
+    }
+    if(ui->lineEdit->text().size() == 0 && ui->Pope->currentText() != "下架电宝")
+    {
+        flag++;
+
+    }
+    if(flag)
+    {
+//        qDebug()<<"2";
+        return;
+    }
+
+
+    if(ui->Pope->currentText() == "添加电宝")
+    {
+        qDebug()<<"0";
+        ui->lineEdit->text().split("@");
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("insert into %1 values(\"%2\",\"空闲\",100.0);")
+                            .arg(ui->lineEdit->text().split("@").at(0))
+                            .arg(ui->lineEdit->text().split("@").at(1))
+                                        ))
+        {
+
+                //清空
+                ui->storage->setCurrentIndex(-1);
+                ui->Pope->setCurrentIndex(-1);
+                ui->lineEdit->clear();
+                return;
+        }
+        qDebug()<<"1";
+        ui->storage->setCurrentIndex(-1);
+        ui->Pope->setCurrentIndex(-1);
+        ui->lineEdit->clear();
+
+    }else if (ui->Pope->currentText() == "下架电宝")
+    {
+        QStringList list = ui->storage->currentText().split(" ");
+        //货架
+        QString stor;
+        if(list.at(0) == "A货架")
+        {
+            stor = "tableA";
+        }else if(list.at(0) == "B货架"){
+            stor = "tableB";
+        }
+        QString series = list.at(1);
+        QString status = list.at(2);
+        QString electric = list.at(3);
+       
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("delete from %1 where series=\"%2\";")
+                            .arg(stor)
+                            .arg(series)
+                                        ))
+        {
+
+                //清空
+                ui->storage->setCurrentIndex(-1);
+                ui->Pope->setCurrentIndex(-1);
+                ui->lineEdit->clear();
+                return;
+        }
+
+        ui->storage->setCurrentIndex(-1);
+        ui->Pope->setCurrentIndex(-1);
+        ui->lineEdit->clear();
+
+    }else if(ui->Pope->currentText() == "改变状态")
+    {
+        QStringList list = ui->storage->currentText().split(" ");
+        //货架
+        QString stor;
+        if(list.at(0) == "A货架")
+        {
+            stor = "tableA";
+        }else if(list.at(0) == "B货架"){
+            stor = "tableB";
+        }
+        QString series = list.at(1);
+        QString status = list.at(2);
+        QString electric = list.at(3);
+
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("update %1 set status=\"%2\" where series=\"%3\" and status=\"%4\";")
+                            .arg(stor)
+                            .arg(ui->lineEdit->text())
+                            .arg(series)
+                            .arg(status)
+                                        ))
+        {
+
+                //清空
+                ui->storage->setCurrentIndex(-1);
+                ui->Pope->setCurrentIndex(-1);
+                ui->lineEdit->clear();
+                return;
+        }
+
+        ui->storage->setCurrentIndex(-1);
+        ui->Pope->setCurrentIndex(-1);
+        ui->lineEdit->clear();
+
+    }else if(ui->Pope->currentText() == "改变电量")
+    {
+        QStringList list = ui->storage->currentText().split(" ");
+        //货架
+        QString stor;
+        if(list.at(0) == "A货架")
+        {
+            stor = "tableA";
+        }else if(list.at(0) == "B货架"){
+            stor = "tableB";
+        }
+        QString series = list.at(1);
+        QString status = list.at(2);
+        QString electric = list.at(3);
+
+        QSqlQuery updateaddquery(*mybase);
+        if(false == updateaddquery.exec(QString("update %1 set electric=%2 where series=\"%3\" and electric=%4;")
+                            .arg(stor)
+                            .arg(ui->lineEdit->text())
+                            .arg(series)
+                            .arg(electric)
+                                        ))
+        {
+
+                //清空
+                ui->storage->setCurrentIndex(-1);
+                ui->Pope->setCurrentIndex(-1);
+                ui->lineEdit->clear();
+                return;
+        }
+
+        ui->storage->setCurrentIndex(-1);
+        ui->Pope->setCurrentIndex(-1);
+        ui->lineEdit->clear();
+
+    }
+
+    //管理员界面用户卡信息列表刷新
+    flushstrogalist();
+    qDebug()<<"2";
+    return;
+
+}
+
+/*监控画面*/
+void Goldfinger::on_pushButton_5_clicked()
+{
+//    CA->threadPause();
+    CA->get_scro(ui->scrollArea);
+    CA->get_monitoring(ui->monitoring);
+    //打开监控窗口
+    ui->dockWidget->setVisible(true);
+
+    //开启摄像头线程
+    CA->start();
+
+    //刷新comboBox
+    flush_com();
+
+
+
+}
+void Goldfinger::flush_com()
+{
+    ui->comboBox->clear();
+    QDir dir("./");
+//    dir.setNameFilters(QStringList(QString("*.jpeg")));
+
+    QStringList list = dir.entryList(QStringList(QString("*.jpg")),QDir::Files);
+    for (auto it :list) {
+        if(it == "monitoring.jpg")
+            continue;
+
+        ui->comboBox->addItem(getFinalFolderName(it));
+    }
+}
+QString Goldfinger::getFinalFolderName(const QString & Filepathname)
+{
+//    int cnt = Filepathname.size();
+    int i = Filepathname.lastIndexOf(".");
+    QString Filename = Filepathname.left(i);//   right(cnt-1-i);
+    return  Filename;
+}
+
+
+
+void Goldfinger::on_comboBox_activated(int index)
+{
+    if(index == -1 )
+        return;
+    qDebug()<<ui->comboBox->itemText(index);
+
+}
+
+
+void Goldfinger::getCA(mycamera *ca)
+{
+    CA =ca;
+}
+
+
+//void Goldfinger::cap(char * filename)
+//{
+//    QFile file("./monitoring.jpg");
+
+//}
